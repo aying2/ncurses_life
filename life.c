@@ -3,7 +3,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include <time.h>
+
+static const int INIT_DELAY = 250;
+static const int INIT_CHANCE = 25;
 
 typedef struct View{
     int nlines;
@@ -22,6 +25,10 @@ typedef enum State {EXIT, PROCEED} State;
 
 void view_init(View* view, int nlines, int ncols, int begin_y, int begin_x)
 {
+    assert(nlines + begin_y <= LINES);
+    assert(ncols + begin_x <= COLS);
+    assert(nlines + begin_y >= 0);
+    assert(ncols + begin_x >= 0);
     if (nlines % 2 == 0) {
         nlines--;
     }
@@ -30,8 +37,13 @@ void view_init(View* view, int nlines, int ncols, int begin_y, int begin_x)
         ncols--;
     }
 
-    *view = (View){.nlines = nlines, .ncols = ncols, 
-                    .begin_y = begin_y, .begin_x = begin_x};
+    view->nlines = nlines;
+    view->ncols = ncols;
+    view->begin_x = begin_x;
+    view->begin_y = begin_y;
+
+//    *view = (View){.nlines = nlines, .ncols = ncols, 
+//                    .begin_y = begin_y, .begin_x = begin_x};
 }
 
 // transforms model coords to view coords
@@ -175,17 +187,48 @@ void toggle_fill(View *view, Model *model)
     }
 }
 
+void random_fill(int chance, View *view, Model *model)
+{
+    int nrows = model->nrows;
+    int ncols = model->ncols;
+
+    for (int i = 0; i < ncols; i++) {
+        for (int j = 0; j < nrows; j++) {
+            cell_move(j, i, view);
+            int n = rand() % 100;
+
+            if (n < chance)
+            {
+                addch(ACS_BLOCK);
+                model->grid[j * ncols + i] = 1;
+            }
+            else 
+            {
+                addch(' ');
+                model->grid[j * ncols + i] = 0;
+            }
+            // o/w blank
+        }
+    }
+}
+
 State user_fill_grid(View *view, Model *model)
 {
+    static int chance = INIT_CHANCE;
+    move(1, 0);
+    clrtoeol();
+    printw("Fill Chance: %d%%", chance);
+
     move(0, 0);
     clrtoeol();
-    printw("Arrow keys = move | r = run | f = fill | F1 = exit");
+    printw("Arrow keys = move | r = run | f = fill | x = -5%% | c = +5%% | v = random | F1 = exit");
     cell_move(0, 0, view);
     curs_set(1);
     timeout(-1);
 
     int cellx = 0;
     int celly = 0;
+
 
     int ch;
     while ((ch = getch()))
@@ -218,6 +261,27 @@ State user_fill_grid(View *view, Model *model)
                 break;
             case 'f':
                 toggle_fill(view, model);
+                break;
+            case 'v':
+                random_fill(chance, view, model);
+                break;
+            case 'c':
+                if (chance + 5 <= 100)
+                {
+                    chance += 5;
+                    move(1, 0);
+                    clrtoeol();
+                    printw("Fill Chance: %d%%", chance);
+                }
+                break;
+            case 'x':
+                if (chance - 5 >= 0)
+                {
+                    chance -= 5;
+                    move(1, 0);
+                    clrtoeol();
+                    printw("Fill Chance: %d%%", chance);
+                }
                 break;
             case 'r':
                 return PROCEED;
@@ -320,27 +384,46 @@ State simulate(View *view, Model *model)
 {
     move(0, 0);
     clrtoeol();
-    printw("e = end | F1 = exit");
+    printw("UP = x2 delay | DOWN = x0.5 delay | e = end | F1 = exit");
 
     curs_set(0);
     timeout(0);
+
+    static double delay = INIT_DELAY;
+
+    move(1, 0);
+    clrtoeol();
+    printw("Delay: %.2fms", delay);
 
     int ch;
     while ((ch = getch()))
     {
         single_turn(view, model);
 
-        refresh();
-        napms(500);
 
-        if (ch == 'e')
-        {
-            return PROCEED;
+        switch (ch) {
+            case 'e':
+                return PROCEED;
+
+            case KEY_F(1):
+                return EXIT;
+            case KEY_UP:
+                delay *= 2;
+
+                move(1, 0);
+                clrtoeol();
+                printw("Delay: %.2fms", delay);
+                break;
+            case KEY_DOWN:
+                delay /= 2;
+
+                move(1, 0);
+                clrtoeol();
+                printw("Delay: %.2fms", delay);
+                break;
         }
-        else if (ch == KEY_F(1))
-        {
-            return EXIT;
-        }
+        refresh();
+        napms((int) delay);
     }
 
     return EXIT;
@@ -348,33 +431,37 @@ State simulate(View *view, Model *model)
 
 int main()
 {
-        initscr();
-        cbreak();
-        keypad(stdscr, TRUE);
-        noecho();
+    time_t t;
+    srand(time(&t));
+        
+    initscr();
+    cbreak();
+    keypad(stdscr, TRUE);
+    noecho();
 
+    View v;
+    View *view = &v;
+    // offset depends on terminal margins
+    view_init(view, LINES - 3, COLS - 3, 2, 2);
 
-        View *view;
-        view_init(view, 25, 25, 2, 2);
-
-        Model *model = model_new(view);
-        while (true)
-        {
-            State state;
-            clear_view(view);
-            clear_model(view, model);
-            state = user_fill_grid(view, model);
-            if (state == EXIT) {
-                break;
-            }
-            simulate(view, model);
-            if (state == EXIT) {
-                break;
-            }
+    Model *model = model_new(view);
+    while (true)
+    {
+        State state;
+        clear_view(view);
+        clear_model(view, model);
+        state = user_fill_grid(view, model);
+        if (state == EXIT) {
+            break;
         }
+        state = simulate(view, model);
+        if (state == EXIT) {
+            break;
+        }
+    }
 
-        model_destroy(model);
-        endwin();
+    model_destroy(model);
+    endwin();
 
-	return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
