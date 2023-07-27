@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/andrew/Shared/life/build/linux-debug",
+  "command": "/usr/bin/cc -g -o CMakeFiles/life.dir/life.c.o -c /home/andrew/Shared/life/life.c",
+  "file": "/home/andrew/Shared/life/life.c",
+  "output": "CMakeFiles/life.dir/life.c.o"
+}
+]

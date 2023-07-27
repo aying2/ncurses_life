@@ -1,0 +1,3 @@
+/home/andrew/Shared/life/build/linux-debug/CMakeFiles/life.dir
+/home/andrew/Shared/life/build/linux-debug/CMakeFiles/edit_cache.dir
+/home/andrew/Shared/life/build/linux-debug/CMakeFiles/rebuild_cache.dir
